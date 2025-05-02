@@ -1,11 +1,11 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
-import fitz  # PyMuPDF
+import fitz 
 import os
 
 firma_path = None
-firmas_por_pagina = {}  # {número_pagina: [(x, y), ...]}
+firmas_por_pagina = {}
 
 def seleccionar_firma():
     global firma_path
@@ -28,7 +28,7 @@ def mostrar_previsualizacion(pdf_path):
     sizes = {}
     firma_seleccionada = {"id": None, "offset": (0, 0)}
     cruz_hover = None
-    firma_imagenes = {}  # <- Añade esto
+    firma_imagenes = {}
 
 
     escala_firma = tk.DoubleVar(value=100)
@@ -91,7 +91,6 @@ def mostrar_previsualizacion(pdf_path):
 
         canvas.coords(fid, x, y)
 
-        # Mover la cruz asociada
         cruz_id = firma_imagenes[fid].get("cruz_id")
         if cruz_id:
             w = firma_imagenes[fid]["w"]
@@ -111,8 +110,8 @@ def mostrar_previsualizacion(pdf_path):
         offset_y = offsets[page][0]
         nueva_coord = (x, y - offset_y)
 
-        old_coord = meta["coord"]  # guarda la coord antigua
-        meta.update({"x": x, "y": y, "coord": nueva_coord})  # actualiza la nueva
+        old_coord = meta["coord"]
+        meta.update({"x": x, "y": y, "coord": nueva_coord}) 
 
         if old_coord in firmas_por_pagina[page]:
             index = firmas_por_pagina[page].index(old_coord)
@@ -123,13 +122,11 @@ def mostrar_previsualizacion(pdf_path):
 
 
     def redibujar_firmas():
-        # Borrar todas las firmas visuales del canvas
         for fid in list(firma_imagenes.keys()):
             canvas.delete(fid)
         canvas.tk_firmas.clear()
         firma_imagenes.clear()
 
-        # Volver a dibujar cada firma con la nueva escala
         scale = escala_firma.get() / 100
         firma_img_base = Image.open(firma_path)
         new_size = (int(firma_img_base.width * scale), int(firma_img_base.height * scale))
@@ -168,7 +165,6 @@ def mostrar_previsualizacion(pdf_path):
         x = canvas.canvasx(event.x)
         y = canvas.canvasy(event.y)
 
-        # Verificar si se hizo clic sobre una firma
         for fid, meta in list(firma_imagenes.items()):
             fx, fy = meta["x"], meta["y"]
             fw, fh = meta["w"], meta["h"]
@@ -179,12 +175,10 @@ def mostrar_previsualizacion(pdf_path):
             if offset_y <= y <= offset_y + altura:
                 coord_rel = (x, y - offset_y)
 
-                # Añadir nueva firma
                 if i not in firmas_por_pagina:
                     firmas_por_pagina[i] = []
                 firmas_por_pagina[i].append(coord_rel)
 
-                # Cargar firma escalada
                 scale = escala_firma.get() / 100
                 firma_img = Image.open(firma_path)
                 new_size = (int(firma_img.width * scale), int(firma_img.height * scale))
@@ -266,7 +260,6 @@ def mostrar_previsualizacion(pdf_path):
     canvas.config(scrollregion=canvas.bbox("all"))
     canvas.bind("<Button-1>", registrar_click)
 
-    # Escalador de tamaño
     tk.Label(top, text="Escala firma (%)").pack()
     tk.Scale(top, from_=10, to=300, orient="horizontal", variable=escala_firma).pack()
 
@@ -315,8 +308,6 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
 
 
 
-
-        # Guardar en carpeta "firmados" junto al original
         pdf_dir = os.path.dirname(pdf_path)
         output_folder = os.path.join(pdf_dir, "firmados")
         os.makedirs(output_folder, exist_ok=True)
@@ -329,7 +320,6 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
 
     messagebox.showinfo("Éxito", "PDFs firmados correctamente.")
 
-# Interfaz
 root = tk.Tk()
 root.title("Firmador de PDFs con Vista Previa")
 root.geometry("350x180")

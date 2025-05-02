@@ -3,237 +3,229 @@ from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import fitz 
 import os
+from io import BytesIO
 
-firma_path = None
-firmas_por_pagina = {}
+signature_path = None
+signatures_by_page = {}
 
-def seleccionar_firma():
-    global firma_path
-    firma_path = filedialog.askopenfilename(title="Select signature image", filetypes=[("Image", "*.png *.jpg *.jpeg")])
-    return firma_path
+def select_signature():
+    global signature_path
+    signature_path = filedialog.askopenfilename(title="Select signature image", filetypes=[("Image", "*.png *.jpg *.jpeg")])
+    return signature_path
 
-def seleccionar_y_previsualizar_pdf():
+def select_and_preview_pdf():
     pdf_path = filedialog.askopenfilename(title="Select a sample PDF", filetypes=[("PDF", "*.pdf")])
     if not pdf_path:
         return
 
-    mostrar_previsualizacion(pdf_path)
+    show_preview(pdf_path)
 
-def mostrar_previsualizacion(pdf_path):
-    click_en_cruz = {"valor": False}
+def show_preview(pdf_path):
+    delete_click = {"value": False}
 
-    global firmas_por_pagina
-    firmas_por_pagina = {}
-    archivos_temporales = []
+    global signatures_by_page
+    signatures_by_page = {}
+    temp_files = []
     sizes = {}
-    firma_seleccionada = {"id": None, "offset": (0, 0)}
-    cruz_hover = None
-    firma_imagenes = {}
+    selected_signature = {"id": None, "offset": (0, 0)}
+    delete_hover = None
+    signature_images = {}
 
+    signature_scale = tk.DoubleVar(value=100)
+    signature_scale.trace_add("write", lambda *args: redraw_signatures())
 
-    escala_firma = tk.DoubleVar(value=100)
-    escala_firma.trace_add("write", lambda *args: redibujar_firmas())
-
-    def manejar_hover(event):
-        nonlocal cruz_hover
+    def handle_hover(event):
+        nonlocal delete_hover
         x, y = canvas.canvasx(event.x), canvas.canvasy(event.y)
 
-        for fid, meta in firma_imagenes.items():
-            fx, fy = meta["x"], meta["y"]
-            fw = meta.get("w", 0)
-            fh = meta.get("h", 0)
+        for sid, meta in signature_images.items():
+            sx, sy = meta["x"], meta["y"]
+            sw = meta.get("w", 0)
+            sh = meta.get("h", 0)
 
-            if fx <= x <= fx + fw and fy <= y <= fy + fh:
-                if cruz_hover:
-                    canvas.delete(cruz_hover)
+            if sx <= x <= sx + sw and sy <= y <= sy + sh:
+                if delete_hover:
+                    canvas.delete(delete_hover)
 
-                cruz_id = canvas.create_text(fx + fw - 5, fy + 5, text="❌", fill="red", font=("Arial", 12, "bold"))
-                firma_imagenes[fid]["cruz_id"] = cruz_id
-                cruz_hover = cruz_id
-                canvas.tag_bind(cruz_id, "<Button-1>", lambda e, fid=fid: click_en_cruz.update({"valor": True}) or borrar_firma(fid))
+                delete_id = canvas.create_text(sx + sw - 5, sy + 5, text="❌", fill="red", font=("Arial", 12, "bold"))
+                signature_images[sid]["delete_id"] = delete_id
+                delete_hover = delete_id
+                canvas.tag_bind(delete_id, "<Button-1>", lambda e, sid=sid: delete_click.update({"value": True}) or delete_signature(sid))
                 return
 
-        if cruz_hover:
-            canvas.delete(cruz_hover)
-            cruz_hover = None
+        if delete_hover:
+            canvas.delete(delete_hover)
+            delete_hover = None
 
-
-    def borrar_firma(fid):
-        nonlocal cruz_hover
-        meta = firma_imagenes[fid]
-        page = meta["pagina"]
+    def delete_signature(sid):
+        nonlocal delete_hover
+        meta = signature_images[sid]
+        page = meta["page"]
         coord = meta["coord"]
-        canvas.delete(fid)
-        if cruz_hover:
-            canvas.delete(cruz_hover)
-        canvas.tk_firmas.remove(meta["img_ref"])
-        firmas_por_pagina[page].remove(coord)
-        del firma_imagenes[fid]
+        canvas.delete(sid)
+        if delete_hover:
+            canvas.delete(delete_hover)
+        canvas.tk_signatures.remove(meta["img_ref"])
+        signatures_by_page[page].remove(coord)
+        del signature_images[sid]
 
-    def iniciar_arrastre(event):
+    def start_drag(event):
         x, y = canvas.canvasx(event.x), canvas.canvasy(event.y)
-        for fid, meta in firma_imagenes.items():
-            fx, fy = meta["x"], meta["y"]
-            fw = meta.get("w", 0)
-            fh = meta.get("h", 0)
-            if fx <= x <= fx + fw and fy <= y <= fy + fh:
-                firma_seleccionada["id"] = fid
-                firma_seleccionada["offset"] = (x - fx, y - fy)
+        for sid, meta in signature_images.items():
+            sx, sy = meta["x"], meta["y"]
+            sw = meta.get("w", 0)
+            sh = meta.get("h", 0)
+            if sx <= x <= sx + sw and sy <= y <= sy + sh:
+                selected_signature["id"] = sid
+                selected_signature["offset"] = (x - sx, y - sy)
                 break
 
-    def mover_firma(event):
-        fid = firma_seleccionada["id"]
-        if fid is None:
+    def move_signature(event):
+        sid = selected_signature["id"]
+        if sid is None:
             return
 
-        x = canvas.canvasx(event.x) - firma_seleccionada["offset"][0]
-        y = canvas.canvasy(event.y) - firma_seleccionada["offset"][1]
+        x = canvas.canvasx(event.x) - selected_signature["offset"][0]
+        y = canvas.canvasy(event.y) - selected_signature["offset"][1]
 
-        canvas.coords(fid, x, y)
+        canvas.coords(sid, x, y)
 
-        cruz_id = firma_imagenes[fid].get("cruz_id")
-        if cruz_id:
-            w = firma_imagenes[fid]["w"]
-            h = firma_imagenes[fid]["h"]
-            canvas.coords(cruz_id, x + w - 5, y + 5)
+        delete_id = signature_images[sid].get("delete_id")
+        if delete_id:
+            w = signature_images[sid]["w"]
+            h = signature_images[sid]["h"]
+            canvas.coords(delete_id, x + w - 5, y + 5)
 
-
-    def soltar_firma(event):
-        fid = firma_seleccionada["id"]
-        if fid is None:
+    def drop_signature(event):
+        sid = selected_signature["id"]
+        if sid is None:
             return
-        x = canvas.canvasx(event.x) - firma_seleccionada["offset"][0]
-        y = canvas.canvasy(event.y) - firma_seleccionada["offset"][1]
+        x = canvas.canvasx(event.x) - selected_signature["offset"][0]
+        y = canvas.canvasy(event.y) - selected_signature["offset"][1]
 
-        meta = firma_imagenes[fid]
-        page = meta["pagina"]
+        meta = signature_images[sid]
+        page = meta["page"]
         offset_y = offsets[page][0]
-        nueva_coord = (x, y - offset_y)
+        new_coord = (x, y - offset_y)
 
         old_coord = meta["coord"]
-        meta.update({"x": x, "y": y, "coord": nueva_coord}) 
+        meta.update({"x": x, "y": y, "coord": new_coord}) 
 
-        if old_coord in firmas_por_pagina[page]:
-            index = firmas_por_pagina[page].index(old_coord)
-            firmas_por_pagina[page][index] = nueva_coord
+        if old_coord in signatures_by_page[page]:
+            index = signatures_by_page[page].index(old_coord)
+            signatures_by_page[page][index] = new_coord
 
-        firma_seleccionada["id"] = None
+        selected_signature["id"] = None
 
+    def redraw_signatures():
+        for sid in list(signature_images.keys()):
+            canvas.delete(sid)
+        canvas.tk_signatures.clear()
+        signature_images.clear()
 
+        scale = signature_scale.get() / 100
+        base_img = Image.open(signature_path)
+        new_size = (int(base_img.width * scale), int(base_img.height * scale))
+        resized_img = base_img.resize(new_size, Image.Resampling.LANCZOS)
 
-    def redibujar_firmas():
-        for fid in list(firma_imagenes.keys()):
-            canvas.delete(fid)
-        canvas.tk_firmas.clear()
-        firma_imagenes.clear()
-
-        scale = escala_firma.get() / 100
-        firma_img_base = Image.open(firma_path)
-        new_size = (int(firma_img_base.width * scale), int(firma_img_base.height * scale))
-        firma_img_resized = firma_img_base.resize(new_size, Image.Resampling.LANCZOS)
-
-        for page_index, coords in firmas_por_pagina.items():
-            for coord_rel in coords:
-                x = coord_rel[0]
-                y = coord_rel[1] + offsets[page_index][0]
-                tk_firma = ImageTk.PhotoImage(firma_img_resized)
-                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_firma)
-                canvas.tag_bind(img_id, "<ButtonPress-1>", iniciar_arrastre)
-                canvas.tag_bind(img_id, "<B1-Motion>", mover_firma)
-                canvas.tag_bind(img_id, "<ButtonRelease-1>", soltar_firma)
-                canvas.tk_firmas.append(tk_firma)
-                firma_imagenes[img_id] = {
-                    "cruz_id": None,
-                    "coord": coord_rel,
-                    "pagina": page_index,
+        for page_index, coords in signatures_by_page.items():
+            for rel_coord in coords:
+                x = rel_coord[0]
+                y = rel_coord[1] + offsets[page_index][0]
+                tk_img = ImageTk.PhotoImage(resized_img)
+                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_img)
+                canvas.tag_bind(img_id, "<ButtonPress-1>", start_drag)
+                canvas.tag_bind(img_id, "<B1-Motion>", move_signature)
+                canvas.tag_bind(img_id, "<ButtonRelease-1>", drop_signature)
+                canvas.tk_signatures.append(tk_img)
+                signature_images[img_id] = {
+                    "delete_id": None,
+                    "coord": rel_coord,
+                    "page": page_index,
                     "x": x,
                     "y": y,
                     "w": new_size[0],
                     "h": new_size[1],
-                    "img_ref": tk_firma
+                    "img_ref": tk_img
                 }
 
-
-
-
-
-    def registrar_click(event):
-        if click_en_cruz["valor"]:
-            click_en_cruz["valor"] = False
+    def register_click(event):
+        if delete_click["value"]:
+            delete_click["value"] = False
             return
 
         x = canvas.canvasx(event.x)
         y = canvas.canvasy(event.y)
 
-        for fid, meta in list(firma_imagenes.items()):
-            fx, fy = meta["x"], meta["y"]
-            fw, fh = meta["w"], meta["h"]
-            if fx <= x <= fx + fw and fy <= y <= fy + fh:
+        for sid, meta in list(signature_images.items()):
+            sx, sy = meta["x"], meta["y"]
+            sw, sh = meta["w"], meta["h"]
+            if sx <= x <= sx + sw and sy <= y <= sy + sh:
                 return  
 
-        for i, (offset_y, altura) in enumerate(offsets):
-            if offset_y <= y <= offset_y + altura:
-                coord_rel = (x, y - offset_y)
+        for i, (offset_y, height) in enumerate(offsets):
+            if offset_y <= y <= offset_y + height:
+                rel_coord = (x, y - offset_y)
 
-                if i not in firmas_por_pagina:
-                    firmas_por_pagina[i] = []
-                firmas_por_pagina[i].append(coord_rel)
+                if i not in signatures_by_page:
+                    signatures_by_page[i] = []
+                signatures_by_page[i].append(rel_coord)
 
-                scale = escala_firma.get() / 100
-                firma_img = Image.open(firma_path)
-                new_size = (int(firma_img.width * scale), int(firma_img.height * scale))
-                firma_img = firma_img.resize(new_size, Image.Resampling.LANCZOS)
-                tk_firma = ImageTk.PhotoImage(firma_img)
+                scale = signature_scale.get() / 100
+                img = Image.open(signature_path)
+                new_size = (int(img.width * scale), int(img.height * scale))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                tk_img = ImageTk.PhotoImage(img)
 
-                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_firma)
-                canvas.tag_bind(img_id, "<ButtonPress-1>", iniciar_arrastre)
-                canvas.tag_bind(img_id, "<B1-Motion>", mover_firma)
-                canvas.tag_bind(img_id, "<ButtonRelease-1>", soltar_firma)
-                canvas.tk_firmas.append(tk_firma)
-                firma_imagenes[img_id] = {
-                    "cruz_id": None,
-                    "coord": coord_rel,
-                    "pagina": i,
+                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_img)
+                canvas.tag_bind(img_id, "<ButtonPress-1>", start_drag)
+                canvas.tag_bind(img_id, "<B1-Motion>", move_signature)
+                canvas.tag_bind(img_id, "<ButtonRelease-1>", drop_signature)
+                canvas.tk_signatures.append(tk_img)
+                signature_images[img_id] = {
+                    "delete_id": None,
+                    "coord": rel_coord,
+                    "page": i,
                     "x": x,
                     "y": y,
                     "w": new_size[0],
                     "h": new_size[1],
-                    "img_ref": tk_firma
+                    "img_ref": tk_img
                 }
                 break
 
-    def aplicar_firmas_y_cerrar():
-        if not firmas_por_pagina:
+    def apply_and_close():
+        if not signatures_by_page:
             messagebox.showwarning("Warning", "No signature positions selected.")
             return
-        eliminar_temporales()
+        delete_temp_files()
         top.destroy()
-        aplicar_firma_en_lote(pdf_path, sizes, escala_firma.get())
+        apply_signature_batch(pdf_path, sizes, signature_scale.get())
 
-    def eliminar_temporales():
-        for archivo in archivos_temporales:
-            if os.path.exists(archivo):
-                os.remove(archivo)
+    def delete_temp_files():
+        for file in temp_files:
+            if os.path.exists(file):
+                os.remove(file)
 
-    def cerrar_ventana():
-        eliminar_temporales()
+    def close_window():
+        delete_temp_files()
         top.destroy()
 
     top = tk.Toplevel(root)
     top.title("Select where to place the signatures")
-    top.protocol("WM_DELETE_WINDOW", cerrar_ventana)
+    top.protocol("WM_DELETE_WINDOW", close_window)
 
     doc = fitz.open(pdf_path)
-    imagenes = []
+    images = []
     offsets = []
 
     for i, page in enumerate(doc):
         pix = page.get_pixmap(dpi=150)
         path = f"preview_page_{i}.png"
         pix.save(path)
-        archivos_temporales.append(path)
+        temp_files.append(path)
         img = Image.open(path)
-        imagenes.append(img)
+        images.append(img)
         sizes[i] = img.size
 
     frame = tk.Frame(top)
@@ -245,12 +237,12 @@ def mostrar_previsualizacion(pdf_path):
 
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
-    canvas.bind("<Motion>", manejar_hover)
+    canvas.bind("<Motion>", handle_hover)
 
     canvas.images = []
-    canvas.tk_firmas = []
+    canvas.tk_signatures = []
     y_offset = 0
-    for img in imagenes:
+    for img in images:
         tk_img = ImageTk.PhotoImage(img)
         canvas.create_image(0, y_offset, anchor=tk.NW, image=tk_img)
         canvas.images.append(tk_img)
@@ -258,15 +250,15 @@ def mostrar_previsualizacion(pdf_path):
         y_offset += img.height
 
     canvas.config(scrollregion=canvas.bbox("all"))
-    canvas.bind("<Button-1>", registrar_click)
+    canvas.bind("<Button-1>", register_click)
 
     tk.Label(top, text="Signature scale (%)").pack()
-    tk.Scale(top, from_=10, to=300, orient="horizontal", variable=escala_firma).pack()
+    tk.Scale(top, from_=10, to=300, orient="horizontal", variable=signature_scale).pack()
 
-    tk.Button(top, text="Apply signatures", command=aplicar_firmas_y_cerrar).pack(pady=10)
+    tk.Button(top, text="Apply signatures", command=apply_and_close).pack(pady=10)
 
-def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
-    if not firma_path or not firmas_por_pagina:
+def apply_signature_batch(example_pdf_path, sizes, scale_percent):
+    if not signature_path or not signatures_by_page:
         messagebox.showerror("Error", "Missing signature image or positions.")
         return
 
@@ -277,7 +269,7 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
     for pdf_path in pdf_paths:
         doc = fitz.open(pdf_path)
 
-        for page_index, coords in firmas_por_pagina.items():
+        for page_index, coords in signatures_by_page.items():
             if page_index >= len(doc):
                 messagebox.showwarning("Warning", f"{pdf_path} has fewer pages than page {page_index + 1}.")
                 continue
@@ -289,12 +281,12 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
             scale_x = page_width / img_width
             scale_y = page_height / img_height
 
-            firma_img = Image.open(firma_path)
-            firma_width, firma_height = firma_img.size
+            signature_img = Image.open(signature_path)
+            signature_width, signature_height = signature_img.size
 
-            scale = escala_percent / 100
-            firma_width_scaled = firma_width * scale
-            firma_height_scaled = firma_height * scale
+            scale = scale_percent / 100
+            signature_width_scaled = signature_width * scale
+            signature_height_scaled = signature_height * scale
 
             rotation = page.rotation  # Detect actual page rotation
 
@@ -305,72 +297,65 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
                 if rotation == 0:
                     x0 = cx * scale_x
                     y0 = cy * scale_y
-                    x1 = x0 + firma_width_scaled * scale_x
-                    y1 = y0 + firma_height_scaled * scale_y
+                    x1 = x0 + signature_width_scaled * scale_x
+                    y1 = y0 + signature_height_scaled * scale_y
 
                 elif rotation == 90:
                     x0 = cy * scale_y
-                    y0 = page_width - (cx * scale_x + firma_width_scaled * scale_x)
-                    x1 = x0 + firma_height_scaled * scale_y
-                    y1 = y0 + firma_width_scaled * scale_x
+                    y0 = page_width - (cx * scale_x + signature_width_scaled * scale_x)
+                    x1 = x0 + signature_height_scaled * scale_y
+                    y1 = y0 + signature_width_scaled * scale_x
 
                 elif rotation == 180:
-                    x0 = page_width - (cx * scale_x + firma_width_scaled * scale_x)
-                    y0 = page_height - (cy * scale_y + firma_height_scaled * scale_y)
-                    x1 = x0 + firma_width_scaled * scale_x
-                    y1 = y0 + firma_height_scaled * scale_y
+                    x0 = page_width - (cx * scale_x + signature_width_scaled * scale_x)
+                    y0 = page_height - (cy * scale_y + signature_height_scaled * scale_y)
+                    x1 = x0 + signature_width_scaled * scale_x
+                    y1 = y0 + signature_height_scaled * scale_y
 
                 elif rotation == 270:
-                    x0 = page_height - (cy * scale_y + firma_height_scaled * scale_y)
+                    x0 = page_height - (cy * scale_y + signature_height_scaled * scale_y)
                     y0 = cx * scale_x
-                    x1 = x0 + firma_height_scaled * scale_y
-                    y1 = y0 + firma_width_scaled * scale_x
+                    x1 = x0 + signature_height_scaled * scale_y
+                    y1 = y0 + signature_width_scaled * scale_x
 
                 rect = fitz.Rect(x0, y0, x1, y1)
-                firma_img = Image.open(firma_path)
+                signature_img = Image.open(signature_path)
 
-                # Rotar según orientación de página
+                # Rotate according to page orientation
                 if rotation == 90:
-                    firma_img = firma_img.rotate(90, expand=True)
+                    signature_img = signature_img.rotate(90, expand=True)
                 elif rotation == 180:
-                    firma_img = firma_img.rotate(180, expand=True)
+                    signature_img = signature_img.rotate(180, expand=True)
                 elif rotation == 270:
-                    firma_img = firma_img.rotate(-270, expand=True)
+                    signature_img = signature_img.rotate(-270, expand=True)
 
-               
-
-                # Guardar imagen rotada temporal en memoria
-                from io import BytesIO
+                # Save rotated image temporarily in memory
                 img_bytes = BytesIO()
-                firma_img.save(img_bytes, format="PNG")
+                signature_img.save(img_bytes, format="PNG")
                 img_bytes.seek(0)
 
                 page.insert_image(rect, stream=img_bytes)
-
-
 
         pdf_dir = os.path.dirname(pdf_path)
         output_folder = os.path.join(pdf_dir, "signed")
         os.makedirs(output_folder, exist_ok=True)
 
         filename = os.path.basename(pdf_path)
-        nuevo_nombre = filename.replace(".pdf", "_signed.pdf")
-        nuevo = os.path.join(output_folder, nuevo_nombre)
-        doc.save(nuevo)
+        new_name = filename.replace(".pdf", "_signed.pdf")
+        new_path = os.path.join(output_folder, new_name)
+        doc.save(new_path)
         doc.close()
 
     messagebox.showinfo("Success", "PDFs signed successfully.")
-
-
 
 root = tk.Tk()
 root.title("PDF Signer with Preview")
 root.geometry("350x180")
 
 tk.Label(root, text="Step 1: Select signature image").pack(pady=5)
-tk.Button(root, text="Select Signature", command=seleccionar_firma).pack()
+tk.Button(root, text="Select Signature", command=select_signature).pack()
 
 tk.Label(root, text="Step 2: Select PDF for preview").pack(pady=5)
-tk.Button(root, text="Preview PDF", command=seleccionar_y_previsualizar_pdf).pack()
+tk.Button(root, text="Preview PDF", command=select_and_preview_pdf).pack()
 
 root.mainloop()

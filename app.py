@@ -9,11 +9,11 @@ firmas_por_pagina = {}
 
 def seleccionar_firma():
     global firma_path
-    firma_path = filedialog.askopenfilename(title="Selecciona la imagen de la firma", filetypes=[("Imagen", "*.png *.jpg *.jpeg")])
+    firma_path = filedialog.askopenfilename(title="Select signature image", filetypes=[("Image", "*.png *.jpg *.jpeg")])
     return firma_path
 
 def seleccionar_y_previsualizar_pdf():
-    pdf_path = filedialog.askopenfilename(title="Selecciona un PDF de ejemplo", filetypes=[("PDF", "*.pdf")])
+    pdf_path = filedialog.askopenfilename(title="Select a sample PDF", filetypes=[("PDF", "*.pdf")])
     if not pdf_path:
         return
 
@@ -204,7 +204,7 @@ def mostrar_previsualizacion(pdf_path):
 
     def aplicar_firmas_y_cerrar():
         if not firmas_por_pagina:
-            messagebox.showwarning("Aviso", "No se seleccionó ninguna posición para firmar.")
+            messagebox.showwarning("Warning", "No signature positions selected.")
             return
         eliminar_temporales()
         top.destroy()
@@ -220,7 +220,7 @@ def mostrar_previsualizacion(pdf_path):
         top.destroy()
 
     top = tk.Toplevel(root)
-    top.title("Selecciona dónde colocar las firmas")
+    top.title("Select where to place the signatures")
     top.protocol("WM_DELETE_WINDOW", cerrar_ventana)
 
     doc = fitz.open(pdf_path)
@@ -260,27 +260,26 @@ def mostrar_previsualizacion(pdf_path):
     canvas.config(scrollregion=canvas.bbox("all"))
     canvas.bind("<Button-1>", registrar_click)
 
-    tk.Label(top, text="Escala firma (%)").pack()
+    tk.Label(top, text="Signature scale (%)").pack()
     tk.Scale(top, from_=10, to=300, orient="horizontal", variable=escala_firma).pack()
 
-    tk.Button(top, text="Aplicar firmas", command=aplicar_firmas_y_cerrar).pack(pady=10)
+    tk.Button(top, text="Apply signatures", command=aplicar_firmas_y_cerrar).pack(pady=10)
 
 def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
     if not firma_path or not firmas_por_pagina:
-        messagebox.showerror("Error", "Falta la imagen o las posiciones de firma.")
+        messagebox.showerror("Error", "Missing signature image or positions.")
         return
 
-    pdf_paths = filedialog.askopenfilenames(title="Selecciona los PDFs a firmar", filetypes=[("PDF", "*.pdf")])
+    pdf_paths = filedialog.askopenfilenames(title="Select PDFs to sign", filetypes=[("PDF", "*.pdf")])
     if not pdf_paths:
         return
-
 
     for pdf_path in pdf_paths:
         doc = fitz.open(pdf_path)
 
         for page_index, coords in firmas_por_pagina.items():
             if page_index >= len(doc):
-                messagebox.showwarning("Aviso", f"{pdf_path} tiene menos páginas que la {page_index + 1}.")
+                messagebox.showwarning("Warning", f"{pdf_path} has fewer pages than page {page_index + 1}.")
                 continue
 
             page = doc.load_page(page_index)
@@ -290,12 +289,12 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
             scale_x = page_width / img_width
             scale_y = page_height / img_height
 
-        firma_img = Image.open(firma_path)
-        firma_width, firma_height = firma_img.size
+            firma_img = Image.open(firma_path)
+            firma_width, firma_height = firma_img.size
 
-        scale = escala_percent / 100
-        firma_width_scaled = firma_width * scale
-        firma_height_scaled = firma_height * scale
+            scale = escala_percent / 100
+            firma_width_scaled = firma_width * scale
+            firma_height_scaled = firma_height * scale
 
         for coord in coords:
             x0 = coord[0] * scale_x
@@ -307,27 +306,28 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
             page.insert_image(rect, filename=firma_path)
 
 
-
         pdf_dir = os.path.dirname(pdf_path)
-        output_folder = os.path.join(pdf_dir, "firmados")
+        output_folder = os.path.join(pdf_dir, "signed")
         os.makedirs(output_folder, exist_ok=True)
 
         filename = os.path.basename(pdf_path)
-        nuevo_nombre = filename.replace(".pdf", "_firmado.pdf")
+        nuevo_nombre = filename.replace(".pdf", "_signed.pdf")
         nuevo = os.path.join(output_folder, nuevo_nombre)
         doc.save(nuevo)
         doc.close()
 
-    messagebox.showinfo("Éxito", "PDFs firmados correctamente.")
+    messagebox.showinfo("Success", "PDFs signed successfully.")
+
+
 
 root = tk.Tk()
-root.title("Firmador de PDFs con Vista Previa")
+root.title("PDF Signer with Preview")
 root.geometry("350x180")
 
-tk.Label(root, text="Paso 1: Selecciona la imagen de la firma").pack(pady=5)
-tk.Button(root, text="Seleccionar Firma", command=seleccionar_firma).pack()
+tk.Label(root, text="Step 1: Select signature image").pack(pady=5)
+tk.Button(root, text="Select Signature", command=seleccionar_firma).pack()
 
-tk.Label(root, text="Paso 2: Selecciona PDF para vista previa").pack(pady=5)
-tk.Button(root, text="Vista Previa PDF", command=seleccionar_y_previsualizar_pdf).pack()
+tk.Label(root, text="Step 2: Select PDF for preview").pack(pady=5)
+tk.Button(root, text="Preview PDF", command=seleccionar_y_previsualizar_pdf).pack()
 
 root.mainloop()

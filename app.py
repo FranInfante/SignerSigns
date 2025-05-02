@@ -296,14 +296,57 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
             firma_width_scaled = firma_width * scale
             firma_height_scaled = firma_height * scale
 
-        for coord in coords:
-            x0 = coord[0] * scale_x
-            y0 = coord[1] * scale_y
-            x1 = x0 + firma_width_scaled * scale_x
-            y1 = y0 + firma_height_scaled * scale_y
+            rotation = page.rotation  # Detect actual page rotation
 
-            rect = fitz.Rect(x0, y0, x1, y1)
-            page.insert_image(rect, filename=firma_path)
+            for coord in coords:
+                cx, cy = coord
+                x0 = y0 = x1 = y1 = 0
+
+                if rotation == 0:
+                    x0 = cx * scale_x
+                    y0 = cy * scale_y
+                    x1 = x0 + firma_width_scaled * scale_x
+                    y1 = y0 + firma_height_scaled * scale_y
+
+                elif rotation == 90:
+                    x0 = cy * scale_y
+                    y0 = page_width - (cx * scale_x + firma_width_scaled * scale_x)
+                    x1 = x0 + firma_height_scaled * scale_y
+                    y1 = y0 + firma_width_scaled * scale_x
+
+                elif rotation == 180:
+                    x0 = page_width - (cx * scale_x + firma_width_scaled * scale_x)
+                    y0 = page_height - (cy * scale_y + firma_height_scaled * scale_y)
+                    x1 = x0 + firma_width_scaled * scale_x
+                    y1 = y0 + firma_height_scaled * scale_y
+
+                elif rotation == 270:
+                    x0 = page_height - (cy * scale_y + firma_height_scaled * scale_y)
+                    y0 = cx * scale_x
+                    x1 = x0 + firma_height_scaled * scale_y
+                    y1 = y0 + firma_width_scaled * scale_x
+
+                rect = fitz.Rect(x0, y0, x1, y1)
+                firma_img = Image.open(firma_path)
+
+                # Rotar según orientación de página
+                if rotation == 90:
+                    firma_img = firma_img.rotate(90, expand=True)
+                elif rotation == 180:
+                    firma_img = firma_img.rotate(180, expand=True)
+                elif rotation == 270:
+                    firma_img = firma_img.rotate(-270, expand=True)
+
+               
+
+                # Guardar imagen rotada temporal en memoria
+                from io import BytesIO
+                img_bytes = BytesIO()
+                firma_img.save(img_bytes, format="PNG")
+                img_bytes.seek(0)
+
+                page.insert_image(rect, stream=img_bytes)
+
 
 
         pdf_dir = os.path.dirname(pdf_path)

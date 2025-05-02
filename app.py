@@ -20,32 +20,193 @@ def seleccionar_y_previsualizar_pdf():
     mostrar_previsualizacion(pdf_path)
 
 def mostrar_previsualizacion(pdf_path):
+    click_en_cruz = {"valor": False}
+
     global firmas_por_pagina
     firmas_por_pagina = {}
     archivos_temporales = []
     sizes = {}
+    firma_seleccionada = {"id": None, "offset": (0, 0)}
+    cruz_hover = None
+    firma_imagenes = {}  # <- Añade esto
+
+
+    escala_firma = tk.DoubleVar(value=100)
+    escala_firma.trace_add("write", lambda *args: redibujar_firmas())
+
+    def manejar_hover(event):
+        nonlocal cruz_hover
+        x, y = canvas.canvasx(event.x), canvas.canvasy(event.y)
+
+        for fid, meta in firma_imagenes.items():
+            fx, fy = meta["x"], meta["y"]
+            fw = meta.get("w", 0)
+            fh = meta.get("h", 0)
+
+            if fx <= x <= fx + fw and fy <= y <= fy + fh:
+                if cruz_hover:
+                    canvas.delete(cruz_hover)
+
+                cruz_id = canvas.create_text(fx + fw - 5, fy + 5, text="❌", fill="red", font=("Arial", 12, "bold"))
+                firma_imagenes[fid]["cruz_id"] = cruz_id
+                cruz_hover = cruz_id
+                canvas.tag_bind(cruz_id, "<Button-1>", lambda e, fid=fid: click_en_cruz.update({"valor": True}) or borrar_firma(fid))
+                return
+
+        if cruz_hover:
+            canvas.delete(cruz_hover)
+            cruz_hover = None
+
+
+    def borrar_firma(fid):
+        nonlocal cruz_hover
+        meta = firma_imagenes[fid]
+        page = meta["pagina"]
+        coord = meta["coord"]
+        canvas.delete(fid)
+        if cruz_hover:
+            canvas.delete(cruz_hover)
+        canvas.tk_firmas.remove(meta["img_ref"])
+        firmas_por_pagina[page].remove(coord)
+        del firma_imagenes[fid]
+
+    def iniciar_arrastre(event):
+        x, y = canvas.canvasx(event.x), canvas.canvasy(event.y)
+        for fid, meta in firma_imagenes.items():
+            fx, fy = meta["x"], meta["y"]
+            fw = meta.get("w", 0)
+            fh = meta.get("h", 0)
+            if fx <= x <= fx + fw and fy <= y <= fy + fh:
+                firma_seleccionada["id"] = fid
+                firma_seleccionada["offset"] = (x - fx, y - fy)
+                break
+
+    def mover_firma(event):
+        fid = firma_seleccionada["id"]
+        if fid is None:
+            return
+
+        x = canvas.canvasx(event.x) - firma_seleccionada["offset"][0]
+        y = canvas.canvasy(event.y) - firma_seleccionada["offset"][1]
+
+        canvas.coords(fid, x, y)
+
+        # Mover la cruz asociada
+        cruz_id = firma_imagenes[fid].get("cruz_id")
+        if cruz_id:
+            w = firma_imagenes[fid]["w"]
+            h = firma_imagenes[fid]["h"]
+            canvas.coords(cruz_id, x + w - 5, y + 5)
+
+
+    def soltar_firma(event):
+        fid = firma_seleccionada["id"]
+        if fid is None:
+            return
+        x = canvas.canvasx(event.x) - firma_seleccionada["offset"][0]
+        y = canvas.canvasy(event.y) - firma_seleccionada["offset"][1]
+
+        meta = firma_imagenes[fid]
+        page = meta["pagina"]
+        offset_y = offsets[page][0]
+        nueva_coord = (x, y - offset_y)
+
+        old_coord = meta["coord"]  # guarda la coord antigua
+        meta.update({"x": x, "y": y, "coord": nueva_coord})  # actualiza la nueva
+
+        if old_coord in firmas_por_pagina[page]:
+            index = firmas_por_pagina[page].index(old_coord)
+            firmas_por_pagina[page][index] = nueva_coord
+
+        firma_seleccionada["id"] = None
+
+
+
+    def redibujar_firmas():
+        # Borrar todas las firmas visuales del canvas
+        for fid in list(firma_imagenes.keys()):
+            canvas.delete(fid)
+        canvas.tk_firmas.clear()
+        firma_imagenes.clear()
+
+        # Volver a dibujar cada firma con la nueva escala
+        scale = escala_firma.get() / 100
+        firma_img_base = Image.open(firma_path)
+        new_size = (int(firma_img_base.width * scale), int(firma_img_base.height * scale))
+        firma_img_resized = firma_img_base.resize(new_size, Image.Resampling.LANCZOS)
+
+        for page_index, coords in firmas_por_pagina.items():
+            for coord_rel in coords:
+                x = coord_rel[0]
+                y = coord_rel[1] + offsets[page_index][0]
+                tk_firma = ImageTk.PhotoImage(firma_img_resized)
+                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_firma)
+                canvas.tag_bind(img_id, "<ButtonPress-1>", iniciar_arrastre)
+                canvas.tag_bind(img_id, "<B1-Motion>", mover_firma)
+                canvas.tag_bind(img_id, "<ButtonRelease-1>", soltar_firma)
+                canvas.tk_firmas.append(tk_firma)
+                firma_imagenes[img_id] = {
+                    "cruz_id": None,
+                    "coord": coord_rel,
+                    "pagina": page_index,
+                    "x": x,
+                    "y": y,
+                    "w": new_size[0],
+                    "h": new_size[1],
+                    "img_ref": tk_firma
+                }
+
+
+
 
 
     def registrar_click(event):
+        if click_en_cruz["valor"]:
+            click_en_cruz["valor"] = False
+            return
+
         x = canvas.canvasx(event.x)
         y = canvas.canvasy(event.y)
 
+        # Verificar si se hizo clic sobre una firma
+        for fid, meta in list(firma_imagenes.items()):
+            fx, fy = meta["x"], meta["y"]
+            fw, fh = meta["w"], meta["h"]
+            if fx <= x <= fx + fw and fy <= y <= fy + fh:
+                return  
+
         for i, (offset_y, altura) in enumerate(offsets):
             if offset_y <= y <= offset_y + altura:
-                coord = (x, y - offset_y)
+                coord_rel = (x, y - offset_y)
+
+                # Añadir nueva firma
                 if i not in firmas_por_pagina:
                     firmas_por_pagina[i] = []
-                firmas_por_pagina[i].append(coord)
-                draw_firma_preview(i, coord)
-                break
+                firmas_por_pagina[i].append(coord_rel)
 
-    def draw_firma_preview(page_index, coord):
-        marker = canvas.create_rectangle(
-            coord[0]-5, offsets[page_index][0] + coord[1]-5,
-            coord[0]+5, offsets[page_index][0] + coord[1]+5,
-            outline='red', width=2
-        )
-        canvas.firma_markers.append(marker)
+                # Cargar firma escalada
+                scale = escala_firma.get() / 100
+                firma_img = Image.open(firma_path)
+                new_size = (int(firma_img.width * scale), int(firma_img.height * scale))
+                firma_img = firma_img.resize(new_size, Image.Resampling.LANCZOS)
+                tk_firma = ImageTk.PhotoImage(firma_img)
+
+                img_id = canvas.create_image(x, y, anchor=tk.NW, image=tk_firma)
+                canvas.tag_bind(img_id, "<ButtonPress-1>", iniciar_arrastre)
+                canvas.tag_bind(img_id, "<B1-Motion>", mover_firma)
+                canvas.tag_bind(img_id, "<ButtonRelease-1>", soltar_firma)
+                canvas.tk_firmas.append(tk_firma)
+                firma_imagenes[img_id] = {
+                    "cruz_id": None,
+                    "coord": coord_rel,
+                    "pagina": i,
+                    "x": x,
+                    "y": y,
+                    "w": new_size[0],
+                    "h": new_size[1],
+                    "img_ref": tk_firma
+                }
+                break
 
     def aplicar_firmas_y_cerrar():
         if not firmas_por_pagina:
@@ -53,7 +214,7 @@ def mostrar_previsualizacion(pdf_path):
             return
         eliminar_temporales()
         top.destroy()
-        aplicar_firma_en_lote(pdf_path, sizes)
+        aplicar_firma_en_lote(pdf_path, sizes, escala_firma.get())
 
     def eliminar_temporales():
         for archivo in archivos_temporales:
@@ -64,7 +225,6 @@ def mostrar_previsualizacion(pdf_path):
         eliminar_temporales()
         top.destroy()
 
-    # --- Ventana de previsualización ---
     top = tk.Toplevel(root)
     top.title("Selecciona dónde colocar las firmas")
     top.protocol("WM_DELETE_WINDOW", cerrar_ventana)
@@ -82,7 +242,6 @@ def mostrar_previsualizacion(pdf_path):
         imagenes.append(img)
         sizes[i] = img.size
 
-
     frame = tk.Frame(top)
     frame.pack(fill="both", expand=True)
 
@@ -92,9 +251,10 @@ def mostrar_previsualizacion(pdf_path):
 
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
+    canvas.bind("<Motion>", manejar_hover)
 
     canvas.images = []
-    canvas.firma_markers = []
+    canvas.tk_firmas = []
     y_offset = 0
     for img in imagenes:
         tk_img = ImageTk.PhotoImage(img)
@@ -106,10 +266,13 @@ def mostrar_previsualizacion(pdf_path):
     canvas.config(scrollregion=canvas.bbox("all"))
     canvas.bind("<Button-1>", registrar_click)
 
-    btn_aplicar = tk.Button(top, text="Aplicar firmas", command=aplicar_firmas_y_cerrar)
-    btn_aplicar.pack(pady=10)
+    # Escalador de tamaño
+    tk.Label(top, text="Escala firma (%)").pack()
+    tk.Scale(top, from_=10, to=300, orient="horizontal", variable=escala_firma).pack()
 
-def aplicar_firma_en_lote(pdf_ejemplo_path, sizes):
+    tk.Button(top, text="Aplicar firmas", command=aplicar_firmas_y_cerrar).pack(pady=10)
+
+def aplicar_firma_en_lote(pdf_ejemplo_path, sizes, escala_percent):
     if not firma_path or not firmas_por_pagina:
         messagebox.showerror("Error", "Falta la imagen o las posiciones de firma.")
         return
@@ -134,14 +297,24 @@ def aplicar_firma_en_lote(pdf_ejemplo_path, sizes):
             scale_x = page_width / img_width
             scale_y = page_height / img_height
 
-            for coord in coords:
-                x0 = coord[0] * scale_x
-                y0 = coord[1] * scale_y
-                x1 = x0 + 150 * scale_x
-                y1 = y0 + 50 * scale_y
+        firma_img = Image.open(firma_path)
+        firma_width, firma_height = firma_img.size
 
-                rect = fitz.Rect(x0, y0, x1, y1)
-                page.insert_image(rect, filename=firma_path)
+        scale = escala_percent / 100
+        firma_width_scaled = firma_width * scale
+        firma_height_scaled = firma_height * scale
+
+        for coord in coords:
+            x0 = coord[0] * scale_x
+            y0 = coord[1] * scale_y
+            x1 = x0 + firma_width_scaled * scale_x
+            y1 = y0 + firma_height_scaled * scale_y
+
+            rect = fitz.Rect(x0, y0, x1, y1)
+            page.insert_image(rect, filename=firma_path)
+
+
+
 
         # Guardar en carpeta "firmados" junto al original
         pdf_dir = os.path.dirname(pdf_path)

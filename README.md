@@ -1,35 +1,11 @@
-# Signs – Firma PDFs fácilmente
+## 🐧 Instalación en Linux (archivo .deb)
 
-Aplicación de escritorio que permite firmar documentos PDF visualmente con tu propia firma arrastrable.
+1. Descarga el instalador:
+   [Descargar signs-linux-installer_1.0.0_all.deb](https://github.com/FranInfante/SignerSigns/releases/download/v1.0.1/signs-linux-installer_1.0.0_all.deb)
 
-## Descargas
+2. Instálalo con doble clic (en Ubuntu Software) o en terminal:
+   
+   sudo dpkg -i signs-linux-installer_1.0.0_all.deb
+   
+Busca “Signs” en el menú de aplicaciones y listo.
 
-| Sistema Operativo | Enlace de descarga |
-|-------------------|--------------------|
-| Linux           | [Descargar signs-linux](https://github.com/FranInfante/SignerSigns/releases/download/1.0/signs-linux) |
-| Windows         | [Descargar signs-windows.exe](https://github.com/FranInfante/SignerSigns/releases/download/1.0/signs-windows) |
-
-## Cómo usar
-
-### Linux
-
-1. Abre terminal y da permisos de ejecución:
-  
-   chmod +x signs-linux
-   ./signs-linux
-
-
-### Windows
-
-1. Haz doble clic en `signs-windows.exe`.
-
-
-## Requisitos si deseas compilarlo tú mismo
-
-1. Instala las dependencias:
-
-   pip install -r requirements.txt
-
-2. Genera el ejecutable:
-
-   pyinstaller --onefile --windowed app.py

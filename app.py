@@ -6,14 +6,36 @@ import os
 from io import BytesIO
 
 signature_path = None
+signature_preview_label = None
 signatures_by_page = {}
 
 def select_signature():
-    global signature_path
-    signature_path = filedialog.askopenfilename(title="Select signature image", filetypes=[("Image", "*.png *.jpg *.jpeg")])
+    global signature_path, signature_preview_label
+
+    signature_path = filedialog.askopenfilename(
+        title="Select signature image",
+        filetypes=[("Image", "*.png *.jpg *.jpeg")]
+    )
+    if signature_path:
+        img = Image.open(signature_path)
+        img.thumbnail((100, 100))  # Resize for preview
+        tk_img = ImageTk.PhotoImage(img)
+
+        if signature_preview_label:
+            signature_preview_label.config(image=tk_img)
+            signature_preview_label.image = tk_img  # Keep reference
+        else:
+            signature_preview_label = tk.Label(root, image=tk_img)
+            signature_preview_label.image = tk_img
+            signature_preview_label.pack(pady=5)
     return signature_path
 
+
 def select_and_preview_pdf():
+    if not signature_path:
+        messagebox.showwarning("Firma no cargada", "Primero selecciona una imagen de firma.")
+        return
+
     pdf_path = filedialog.askopenfilename(title="Select a sample PDF", filetypes=[("PDF", "*.pdf")])
     if not pdf_path:
         return
@@ -350,12 +372,31 @@ def apply_signature_batch(example_pdf_path, sizes, scale_percent):
 
 root = tk.Tk()
 root.title("PDF Signer with Preview")
-root.geometry("350x180")
+root.geometry("800x600")
 
-tk.Label(root, text="Step 1: Select signature image").pack(pady=5)
-tk.Button(root, text="Select Signature", command=select_signature).pack()
+main_frame = tk.Frame(root, bg="#e0e0e0", padx=20, pady=20)
+main_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
-tk.Label(root, text="Step 2: Select PDF for preview").pack(pady=5)
-tk.Button(root, text="Preview PDF", command=select_and_preview_pdf).pack()
+tk.Label(main_frame, text="Step 1: Select signature image", font=("Arial", 12)).grid(row=0, column=0, pady=(0, 5), sticky="w")
+
+tk.Button(main_frame, text="Select Signature", command=select_signature, width=20).grid(row=1, column=0, pady=(0, 15))
+
+tk.Label(main_frame, text="Step 2: Select PDF for preview", font=("Arial", 12)).grid(row=2, column=0, pady=(0, 5), sticky="w")
+
+tk.Button(main_frame, text="Preview PDF", command=select_and_preview_pdf, width=20).grid(row=3, column=0, pady=(0, 15))
+
+from PIL import ImageDraw
+
+placeholder_img = Image.new("RGB", (100, 60), color="#cccccc")
+draw = ImageDraw.Draw(placeholder_img)
+draw.text((10, 20), "Sign not\nloaded", fill="black")
+
+placeholder_tk_img = ImageTk.PhotoImage(placeholder_img)
+
+signature_preview_label = tk.Label(main_frame, image=placeholder_tk_img)
+signature_preview_label.image = placeholder_tk_img  
+signature_preview_label.grid(row=4, column=0, pady=(10, 0))
+
+
 
 root.mainloop()
